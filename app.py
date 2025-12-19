@@ -1,78 +1,42 @@
-#%% packages
-import streamlit as st
+# app.py (bereinigt)
+
 import os
-# from dotenv import load_dotenv
-# load_dotenv()
-from langchain_groq import ChatGroq
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import PydanticOutputParser
-from pydantic import BaseModel, Field
- 
-#%%
-GROQ_API_KEY=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
-#%% output parser
-class MyMovieOutput(BaseModel):
-    title: str = Field(description="The movie title")
-    director: str = Field(description="The director of the movie in the form 'surname, firstname'", examples=["Cameron, James"])
-    actors: list[str] = Field(description="The 5 most relevant actors of the movie")
-    release_year: int
- 
-class MyMovieOutputs(BaseModel):
-    movies: list[MyMovieOutput]
- 
-output_parser = PydanticOutputParser(pydantic_object=MyMovieOutputs)
- 
-#%% Prompt Template
-prompt_template = ChatPromptTemplate.from_messages([
-    ("system", """
-        Du lieferst Filminformationen auf Basis der übergebenen Handlung.
-        Gib die 5 relevantesten Filme an.
-        {format_instructions}
-    """),
-    ("user", "Handlung: <<{handlung}>>")
-]).partial(format_instructions=output_parser.get_format_instructions())
- 
- 
-# %% Modellinstanz
-MODEL_NAME="llama-3.3-70b-versatile"
-model = ChatGroq(model=MODEL_NAME)
- 
-#%% Chain erstellen
-chain = prompt_template | model | output_parser
-# %% chain invocation
- 
-# handlung = "deutschland und weltmeister"
-# res = chain.invoke({"handlung": handlung})
- 
-# # Ergebnis
-# from pprint import pprint
-# pprint(res)
- 
- 
-#%% packages
+import traceback
 import streamlit as st
-import os
 from dotenv import load_dotenv
-load_dotenv()
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
- 
- 
-#%% output parser
+
+# Load environment variables from .env (only in development)
+load_dotenv()
+
+# Read GROQ API key from environment (recommended)
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+if not GROQ_API_KEY:
+    st.error("GROQ_API_KEY fehlt. Bitte in .env oder in Streamlit-Secrets setzen.")
+    st.stop()
+
+# Ensure libraries that read env vars can access it
+os.environ["GROQ_API_KEY"] = GROQ_API_KEY
+
+# Output parser / Pydantic models
 class MyMovieOutput(BaseModel):
     title: str = Field(description="The movie title")
-    director: str = Field(description="The director of the movie in the form 'surname, firstname'", examples=["Cameron, James"])
+    director: str = Field(
+        description="The director of the movie in the form 'surname, firstname'",
+        examples=["Cameron, James"],
+    )
     actors: list[str] = Field(description="The 5 most relevant actors of the movie")
     release_year: int
- 
+
 class MyMovieOutputs(BaseModel):
     movies: list[MyMovieOutput]
- 
+
 output_parser = PydanticOutputParser(pydantic_object=MyMovieOutputs)
- 
-#%% Prompt Template
+
+# Prompt template
 prompt_template = ChatPromptTemplate.from_messages([
     ("system", """
         Du lieferst Filminformationen auf Basis der übergebenen Handlung.
@@ -81,38 +45,38 @@ prompt_template = ChatPromptTemplate.from_messages([
     """),
     ("user", "Handlung: <<{handlung}>>")
 ]).partial(format_instructions=output_parser.get_format_instructions())
- 
- 
-# %% Modellinstanz
-MODEL_NAME="llama-3.3-70b-versatile"
+
+# Model configuration
+MODEL_NAME = "llama-3.3-70b-versatile"
+# If ChatGroq accepts an api_key parameter, you can pass it explicitly:
+# model = ChatGroq(model=MODEL_NAME, api_key=GROQ_API_KEY)
 model = ChatGroq(model=MODEL_NAME)
- 
-#%% Chain erstellen
+
+# Chain erstellen
 chain = prompt_template | model | output_parser
-# %% chain invocation
-# %% chain invocation
- 
- 
-# %% chain invocation
+
+# Streamlit UI
 st.title("Welcher Film ist es?")
- 
-filmbeschreibung = st.chat_input("Say something")
+
+filmbeschreibung = st.chat_input("Handlung eingeben")
 if filmbeschreibung:
     with st.chat_message("user"):
         st.write(f"Nutzerbeschreibung: {filmbeschreibung}")
-    res = chain.invoke({"handlung": filmbeschreibung})
-    with st.chat_message("ai"):
-        for r in res.model_dump()["movies"]:
-            st.markdown(f"**Titel:** {r['title']}")
-            st.markdown(f"**Regisseur:** {r['director']}")
-            st.divider()
-            # st.write(r['actors'])
-            # st.write(r['release_year'])
-            # st.write("-"*20)
- 
-  
-# # Ergebnis
-# from pprint import pprint
-# pprint(res)
- 
- 
+
+    try:
+        res = chain.invoke({"handlung": filmbeschreibung})
+        movies = res.model_dump().get("movies", [])
+        with st.chat_message("ai"):
+            if not movies:
+                st.write("Keine Filme gefunden.")
+            for r in movies:
+                st.markdown(f"**Titel:** {r.get('title', '')}")
+                st.markdown(f"**Regisseur:** {r.get('director', '')}")
+                actors = r.get('actors', [])
+                if actors:
+                    st.markdown(f"**Schauspieler:** {', '.join(actors)}")
+                st.markdown(f"**Jahr:** {r.get('release_year', '')}")
+                st.divider()
+    except Exception:
+        st.error("Fehler beim Abfragen des Modells. Siehe Traceback unten.")
+        st.text(traceback.format_exc())
