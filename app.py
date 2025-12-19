@@ -8,7 +8,8 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
  
- 
+#%%
+GROQ_API_KEY=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
 #%% output parser
 class MyMovieOutput(BaseModel):
     title: str = Field(description="The movie title")
